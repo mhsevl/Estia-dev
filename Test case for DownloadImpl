@@ -1,0 +1,102 @@
+package com.example.estia;
+
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+import org.schabi.newpipe.extractor.downloader.Request;
+import org.schabi.newpipe.extractor.exceptions.ReCaptchaException;
+
+import java.io.IOException;
+import java.util.Collections;
+
+import okhttp3.OkHttpClient;
+import okhttp3.mockwebserver.MockResponse;
+import okhttp3.mockwebserver.MockWebServer;
+
+import static org.junit.Assert.*;
+
+public class DownloaderImplTest {
+
+    private MockWebServer mockWebServer;
+    private DownloaderImpl downloader;
+
+    @Before
+    public void setUp() throws IOException {
+        mockWebServer = new MockWebServer();
+        mockWebServer.start();
+
+        OkHttpClient.Builder builder = new OkHttpClient.Builder();
+        downloader = DownloaderImpl.init(builder);
+    }
+
+    @After
+    public void tearDown() throws IOException {
+        mockWebServer.shutdown();
+    }
+
+    // -------------------- Test Cases --------------------
+
+    @Test
+    public void execute_shouldReturnSuccessfulResponse() throws Exception {
+        // Arrange
+        mockWebServer.enqueue(
+                new MockResponse()
+                        .setResponseCode(200)
+                        .setBody("Success Response")
+        );
+
+        String url = mockWebServer.url("/test").toString();
+
+        Request request = new Request(
+                "GET",
+                url,
+                Collections.emptyMap(),
+                null
+        );
+
+        // Act
+        org.schabi.newpipe.extractor.downloader.Response response =
+                downloader.execute(request);
+
+        // Assert
+        assertEquals(200, response.responseCode());
+        assertEquals("Success Response", response.responseBody());
+        assertEquals(url, response.latestUrl());
+    }
+
+    @Test
+    public void execute_shouldThrowReCaptchaException_on429() throws IOException {
+        // Arrange
+        mockWebServer.enqueue(
+                new MockResponse()
+                        .setResponseCode(429)
+        );
+
+        String url = mockWebServer.url("/captcha").toString();
+
+        Request request = new Request(
+                "GET",
+                url,
+                Collections.emptyMap(),
+                null
+        );
+
+        // Act & Assert
+        try {
+            downloader.execute(request);
+            fail("Expected ReCaptchaException to be thrown");
+        } catch (ReCaptchaException ex) {
+            assertTrue(ex.getMessage().contains("reCaptcha"));
+        }
+    }
+
+    @Test
+    public void init_shouldReturnSingletonInstance() {
+        // Act
+        DownloaderImpl instance1 = DownloaderImpl.getInstance();
+        DownloaderImpl instance2 = DownloaderImpl.init(null);
+
+        // Assert
+        assertSame(instance1, instance2);
+    }
+}
